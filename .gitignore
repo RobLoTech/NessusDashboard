@@ -47,10 +47,17 @@ Removed
 docker-compose.yml
 
 # docker/compose scratch artifacts (repo root)
-/[0-9a-f]*
 /Removed
 /Running
 /Using
 
 # extracted / container-only artifacts
 main.py.from_container
+
+# allow client build/config JSON
+!client/package.json
+!client/package-lock.json
+!client/tsconfig.json
+!client/tsconfig.app.json
+!client/tsconfig.node.json
+!client/vite.config.json
