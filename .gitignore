@@ -1,0 +1,56 @@
+# --- secrets ---
+.env
+*.env
+.env.*
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# --- node / react ---
+client/node_modules/
+client/dist/
+client/.vite/
+client/.cache/
+
+# --- docker / compose local state ---
+**/.docker/
+docker-compose.override.yml
+
+# --- exports / scan artifacts (avoid big + sensitive) ---
+exports/
+*.nessus
+*.csv
+*.json
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- accidental temp/marker files (your repo currently has these) ---
+Running
+Using
+Removed
+[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
+
+# local / environment-specific
+.env
+docker-compose.yml
+
+# docker/compose scratch artifacts (repo root)
+/[0-9a-f]*
+/Removed
+/Running
+/Using
+
+# extracted / container-only artifacts
+main.py.from_container
