@@ -3,6 +3,9 @@
 *.env
 .env.*
 
+# allow env template
+!.env.example
+
 # --- python ---
 __pycache__/
 *.py[cod]
