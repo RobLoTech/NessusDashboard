@@ -246,7 +246,6 @@ export default function App() {
 
           params.set("limit", String(findLimit));
           if (view === "findings") {
-            params.set("dedup", "1");
           }
           params.set("offset", String(findOffset));
 
@@ -276,7 +275,8 @@ export default function App() {
             params.set("severity_in", "-1");
           }
 
-          const url = `/api/findings?${params.toString()}&dedup=1`;
+          if (!params.has("dedup")) params.set("dedup", "asset_plugin");
+          const url = `/api/findings?${params.toString()}`;
 
           const resp = await fetch(url, { signal: controller.signal });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);

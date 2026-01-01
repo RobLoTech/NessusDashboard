@@ -642,7 +642,10 @@ def list_findings(
     min_severity_nessus: Optional[int] = Query(default=None, ge=0, le=4),
     status: Optional[str] = Query(default=None),  # e.g. "open"
     severity_in: Optional[str] = Query(default=None, description="Comma-separated severity_nessus values (0-4), e.g. 4,3,2"),
-    dedup: bool = Query(default=False, description="If true, aggregate duplicate finding_instances by finding_id+port+protocol"),
+    dedup: str = Query(
+        default="none",
+        description="Dedup mode: none | instance (aggregate by finding_id+port+protocol) | asset_plugin (aggregate by asset+plugin only)",
+    ),
     sort_by: Literal[
         "last_seen",
         "first_seen",
@@ -707,7 +710,7 @@ def list_findings(
     order_dir = "ASC" if sort_dir == "asc" else "DESC"
     order_by_sql = f"{order_col} {order_dir} NULLS LAST"
 
-    if dedup:
+    if dedup == "instance":
         # Dedup = aggregate finding_instances by (finding_id, port, protocol)
         total_sql = text(f"""
             SELECT COUNT(*)::int
@@ -785,30 +788,37 @@ def list_findings(
             ORDER BY {order_by_sql}
             LIMIT :limit OFFSET :offset
         """)
-    else:
+    elif dedup == "asset_plugin":
+        # Dedup = one row per (asset, plugin); aggregate endpoints for export/drilldown
         total_sql = text(f"""
             SELECT COUNT(*)::int
-            FROM public.finding_instances fi
-            JOIN public.findings f ON f.id = fi.finding_id
-            JOIN public.assets a ON a.id = f.asset_id
-            JOIN public.plugins p ON p.plugin_id = f.plugin_id
-            LEFT JOIN LATERAL (
-              SELECT ai.ip_value
-              FROM public.asset_identities ai
-              WHERE ai.asset_id = a.id AND ai.ip_value IS NOT NULL
-              ORDER BY ai.last_seen DESC
-              LIMIT 1
-            ) ip ON TRUE
-            {where_sql}
+            FROM (
+              SELECT a.id, f.plugin_id
+              FROM public.finding_instances fi
+              JOIN public.findings f ON f.id = fi.finding_id
+              JOIN public.assets a ON a.id = f.asset_id
+              JOIN public.plugins p ON p.plugin_id = f.plugin_id
+              LEFT JOIN LATERAL (
+                SELECT ai.ip_value
+                FROM public.asset_identities ai
+                WHERE ai.asset_id = a.id AND ai.ip_value IS NOT NULL
+                ORDER BY ai.last_seen DESC
+                LIMIT 1
+              ) ip ON TRUE
+              {where_sql}
+              GROUP BY a.id, f.plugin_id
+            ) x
         """)
 
         rows_sql = text(f"""
             SELECT
               a.canonical_name AS asset,
               ip.ip_value AS ip,
+
               f.severity_label AS severity,
               f.severity_nessus,
               f.status,
+
               f.first_seen,
               f.last_seen,
 
@@ -817,12 +827,18 @@ def list_findings(
               p.family AS plugin_family,
               p.cvss_base,
 
-              LEFT(COALESCE(p.synopsis,''), 240) AS synopsis_preview,
-              LEFT(COALESCE(p.solution,''), 240) AS solution_preview,
+              MAX(LEFT(COALESCE(p.synopsis,''), 240)) AS synopsis_preview,
+              MAX(LEFT(COALESCE(p.solution,''), 240)) AS solution_preview,
 
-              COALESCE(fi.port, 0) AS port,
-              COALESCE(fi.protocol, 'host') AS protocol,
-              LEFT(COALESCE(fi.plugin_output,''), 240) AS plugin_output_preview
+              NULL::int AS port,
+              NULL::text AS protocol,
+              NULL::text AS plugin_output_preview,
+
+              COUNT(fi.id)::int AS instance_count,
+              STRING_AGG(
+                DISTINCT (COALESCE(fi.protocol,'?') || ':' || COALESCE(fi.port,0)::text),
+                ', ' ORDER BY (COALESCE(fi.protocol,'?') || ':' || COALESCE(fi.port,0)::text)
+              ) AS endpoints
 
             FROM public.finding_instances fi
             JOIN public.findings f ON f.id = fi.finding_id
@@ -836,6 +852,18 @@ def list_findings(
               LIMIT 1
             ) ip ON TRUE
             {where_sql}
+            GROUP BY
+              a.canonical_name,
+              ip.ip_value,
+              f.severity_label,
+              f.severity_nessus,
+              f.status,
+              f.first_seen,
+              f.last_seen,
+              p.plugin_id,
+              p.plugin_name,
+              p.family,
+              p.cvss_base
             ORDER BY {order_by_sql}
             LIMIT :limit OFFSET :offset
         """)

@@ -49,13 +49,34 @@ def ingest_csv_to_raw(database_url: str, csv_path: str, file_sha256: str, scan_i
             for row in reader:
                 row_count += 1
                 conn.execute(text("""
-                    INSERT INTO raw_nessus_rows (ingest_id, row_num, row_json)
-                    VALUES (:ingest_id, :row_num, CAST(:row_json AS jsonb))
+                    INSERT INTO raw_nessus_rows
+                    (ingest_id, row_num, row_json, severity, plugin_id, plugin_name, cve_text, host_ip, host_fqdn, port, protocol)
+                    VALUES
+                    (:ingest_id, :row_num, CAST(:row_json AS jsonb), :severity, :plugin_id, :plugin_name, :cve_text,
+                    CAST(NULLIF(:host_ip,'') AS inet), NULLIF(:host_fqdn,''), :port, NULLIF(:protocol,''))
                     ON CONFLICT (ingest_id, row_num) DO NOTHING
                 """), {
                     "ingest_id": ingest_id,
                     "row_num": row_count,
                     "row_json": json.dumps(row),
+
+                    # best-effort typed extracts (raw JSON remains authoritative)
+                    "severity": int(row.get("Severity")) if str(row.get("Severity") or "").strip().isdigit() else None,
+                    "plugin_id": int(row.get("Plugin ID")) if str(row.get("Plugin ID") or "").strip().isdigit() else None,
+                    "plugin_name": row.get("Name") or row.get("Plugin Name") or None,
+                    "cve_text": row.get("CVE") or row.get("Cves") or None,
+                    "host_ip": (lambda v: v if v and all(ch.isdigit() or ch == "." for ch in v) else "")(
+                        (row.get("Host") or row.get("IP Address") or row.get("IP") or "").strip()
+                    ),
+                    "host_fqdn": (
+                        (row.get("FQDN") or row.get("DNS Name") or row.get("Hostname") or "").strip()
+                        or (lambda v: v if v and not all(ch.isdigit() or ch == "." for ch in v) else None)(
+                            (row.get("Host") or row.get("IP Address") or row.get("IP") or "").strip()
+                        )
+                        or ""
+                    ),
+                    "port": int(row.get("Port")) if str(row.get("Port") or "").strip().isdigit() else None,
+                    "protocol": (row.get("Protocol") or "").strip() or None,
                 })
 
             conn.execute(text("""
@@ -65,7 +86,10 @@ def ingest_csv_to_raw(database_url: str, csv_path: str, file_sha256: str, scan_i
             """), {"row_count": row_count, "ingest_id": ingest_id})
 
     return row_count
-app = typer.Typer(add_completion=False)
+# Work around Typer rich help formatting crash in this environment
+os.environ.setdefault("TERM", "dumb")
+os.environ.setdefault("RICH_DISABLE", "1")
+app = typer.Typer(add_completion=False, rich_markup_mode=None)
 
 EXPORT_DIR = pathlib.Path("/app/exports")  # bind-mounted via Dockerfile copy; we’ll copy out to host by writing into /app then docker cp if needed
 

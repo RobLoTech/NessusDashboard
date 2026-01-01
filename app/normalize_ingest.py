@@ -267,6 +267,16 @@ def main():
                         "now": now,
                     },
                 )
+                
+                # Ensure CVE exists before linking (FK on finding_cves.cve -> cves.cve)
+                conn.execute(
+                    text("""
+                        INSERT INTO cves (cve)
+                        VALUES (:cve)
+                        ON CONFLICT (cve) DO NOTHING
+                    """),
+                    {"cve": cve},
+                )
 
                 conn.execute(
                     text("""

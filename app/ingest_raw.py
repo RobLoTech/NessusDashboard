@@ -51,8 +51,16 @@ def main():
             plugin_name = r.get("Name") or r.get("Plugin Name") or r.get("plugin_name")
             cve_text = r.get("CVE") or r.get("Cves") or r.get("cve")
 
-            host_ip = r.get("Host") or r.get("IP Address") or r.get("IP") or r.get("host")
-            host_fqdn = r.get("FQDN") or r.get("DNS Name") or r.get("Hostname") or r.get("host_name")
+            host_raw = (r.get("Host") or r.get("IP Address") or r.get("IP") or r.get("host") or "").strip()
+            host_fqdn = (r.get("FQDN") or r.get("DNS Name") or r.get("Hostname") or r.get("host_name") or "").strip() or None
+
+            # If "Host" is an IP, keep it as host_ip; otherwise treat it as a hostname/FQDN.
+            if host_raw and all(ch.isdigit() or ch == "." for ch in host_raw):
+                host_ip = host_raw
+            else:
+                host_ip = ""
+                if host_raw and not host_fqdn:
+                    host_fqdn = host_raw
 
             port = norm_int(r.get("Port"))
             protocol = (r.get("Protocol") or "").strip() or None
