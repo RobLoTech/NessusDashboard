@@ -1,32 +1,64 @@
-version: "3.8"
-
 services:
+  # -----------------------------
+  # PostgreSQL database
+  # -----------------------------
   db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: nessusdashboard
-    ports:
-      - "5432:5432"
-    volumes:
-      - nessusdash_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    image: postgres:16-alpine
 
+    # IMPORTANT:
+    # These credentials MUST match the DATABASE_URL in .env
+    environment:
+      POSTGRES_DB: nessuskev
+      POSTGRES_USER: nessuskev
+
+      # CHANGE THIS:
+      # Pick a strong password and reuse it in .env
+      POSTGRES_PASSWORD: <change_me>
+
+    # Persistent database storage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    # Health check so the API waits for Postgres to be ready
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nessuskev -d nessuskev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # -----------------------------
+  # NessusDashboard API (FastAPI)
+  # -----------------------------
   app:
-    build: ./app
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+
+    # Load environment variables from .env
+    # Users should copy .env.example -> .env
     env_file:
       - .env
+
+    # Ensure database is healthy before starting API
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
-    # If you want live dev mounts later, we can add them.
 
+    # Local-only binding for safety
+    # Access UI/API at http://localhost:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    # Simple health endpoint check
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz').read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+# -----------------------------
+# Named volumes
+# -----------------------------
 volumes:
-  nessusdash_pgdata:
+  # PostgreSQL data persists across container restarts
+  pgdata:
